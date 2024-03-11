@@ -1,0 +1,5 @@
+config/certbot/**
+!config/certbot/README
+
+secrets/*
+!secrets/*.example

@@ -1,0 +1,64 @@
+version: "3"
+services:
+  ddclient:
+    image: linuxserver/ddclient
+    container_name: ddclient
+    restart: unless-stopped
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=Etc/UTC
+      - FILE__CLOUDFLARE_API_TOKEN=/run/secrets/cloudflare_api_token
+    volumes:
+      - ./config/ddclient:/config
+    secrets:
+      - cloudflare_api_token
+  certbot:
+    image: certbot/dns-cloudflare
+    container_name: certbot
+    volumes:
+      - ./config/certbot:/etc/letsencrypt/live
+    secrets:
+      - source: cloudflare_api_token_ini
+        target: cloudflare.ini
+    command: >
+      certonly
+      --non-interactive
+      --agree-tos
+      --dns-cloudflare
+      --dns-cloudflare-credentials /run/secrets/cloudflare.ini
+      --dns-cloudflare-propagation-seconds 30
+      --email email@example.com
+      -d adguard.example.com
+  adguardhome:
+    image: adguard/adguardhome
+    container_name: adguardhome
+    restart: unless-stopped
+    volumes:
+      - ./config/adguardhome/:/opt/adguardhome/conf
+      - ./config/certbot:/opt/adguardhome/certs
+    depends_on:
+      certbot:
+        condition: service_completed_successfully
+    ports:
+      # - 53:53 # DNS
+      # - 67:67/udp # DHCP
+      # - 68:68 # DHCP
+      - 80:80/tcp # HTTPS/DNS-over-HTTPS
+      - 443:443 # HTTPS/DNS-over-HTTPS
+      # - 784:784/udp # DNS-over-QUIC
+      - 853:853 # DNS-over-TLS (tcp), DNS-over-QUIC (udp)
+      - 3000:3000/tcp # HTTPS/DNS-over-HTTPS
+      - 5443:5443 # DNSCrypt
+      # - 8853:8853/udp # DNS-over-QUIC
+  restarter:
+    image: docker:cli
+    container_name: restarter
+    volumes: ["/var/run/docker.sock:/var/run/docker.sock"]
+    command: ["/bin/sh", "-c", "while true; do sleep 86400; docker restart certbot; done"]
+    restart: unless-stopped
+secrets:
+  cloudflare_api_token:
+    file: secrets/cloudflare_api_token.txt
+  cloudflare_api_token_ini:
+    file: secrets/cloudflare_api_token.ini
